@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 
+const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY;
+
 const C = {
   bg: "#F4F2EE", surface: "#FFFFFF", border: "#E0DDD8", borderStrong: "#C8C4BE",
   teal: "#1E7D7D", tealLight: "#E8F4F4", tealBorder: "#A8D4D4",
@@ -37,6 +39,25 @@ Algemene regels:
 const OPENING_PROMPT = (k) =>
   `Start nu het gesprek. Stuur een kort, persoonlijk openingsbericht als reactivatie voor ${k.bedrijfsnaam}. Gebruik de Prince Charming stijl: neem contact op met een oude lead die ooit interesse toonde in ${k.product}. Één korte zin + één vraag. Geen opsomming, geen formele aanhef.`;
 
+async function callClaude(system, messages) {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1000,
+      system,
+      messages,
+    }),
+  });
+  const data = await res.json();
+  return data.content?.[0]?.text || null;
+}
+
 export default function App() {
   const [tab, setTab] = useState("kennisbank");
   const [k, setK] = useState(defaultK);
@@ -59,18 +80,8 @@ export default function App() {
     setAiStarted(true);
     setLoading(true);
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          system: buildPrompt(k),
-          messages: [{ role: "user", content: OPENING_PROMPT(k) }],
-        }),
-      });
-      const data = await res.json();
-      setMessages([{ role: "assistant", content: data.content?.[0]?.text || `Hé, ben jij het nog? We hadden je eerder gesproken over ${k.product}. Heb je hier nog interesse in?` }]);
+      const text = await callClaude(buildPrompt(k), [{ role: "user", content: OPENING_PROMPT(k) }]);
+      setMessages([{ role: "assistant", content: text || `Hé, ben jij het nog? We hadden je eerder gesproken over ${k.product}. Heb je hier nog interesse in?` }]);
     } catch {
       setMessages([{ role: "assistant", content: `Hé, ik ben het van ${k.bedrijfsnaam}. We hadden jou eerder gesproken over ${k.product} — heb je hier nog interesse in?` }]);
     }
@@ -99,18 +110,8 @@ export default function App() {
     setInput("");
     setLoading(true);
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          system: buildPrompt(k),
-          messages: next,
-        }),
-      });
-      const data = await res.json();
-      setMessages([...next, { role: "assistant", content: data.content?.[0]?.text || "Er ging iets mis." }]);
+      const text = await callClaude(buildPrompt(k), next);
+      setMessages([...next, { role: "assistant", content: text || "Er ging iets mis." }]);
     } catch {
       setMessages([...next, { role: "assistant", content: "Verbindingsfout. Probeer opnieuw." }]);
     }
@@ -156,7 +157,6 @@ export default function App() {
       <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
       <div style={{ height: 4, background: C.teal }} />
 
-      {/* Header */}
       <div style={{ background: "#fff", borderBottom: `1px solid ${C.border}`, padding: "0 32px", height: 62, display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 10 }}>
         <Logo />
         <div style={{ display: "flex", gap: 2, background: C.bg, borderRadius: 8, padding: 3, border: `1px solid ${C.border}` }}>
@@ -174,7 +174,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* KENNISBANK */}
       {tab === "kennisbank" && (
         <div style={{ maxWidth: 600, margin: "0 auto", padding: "40px 24px" }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 6px", letterSpacing: "-0.4px" }}>Kennisbank instellen</h1>
@@ -183,7 +182,6 @@ export default function App() {
           </p>
 
           <div style={{ background: "#fff", borderRadius: 12, border: `1px solid ${C.border}`, padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
-
             <div>
               <Label text="Bedrijfsnaam" req />
               <input value={k.bedrijfsnaam} onChange={e => setK({ ...k, bedrijfsnaam: e.target.value })} placeholder="bijv. Doko Kozijnen" style={inp} />
@@ -256,10 +254,8 @@ export default function App() {
         </div>
       )}
 
-      {/* GESPREK */}
       {tab === "gesprek" && (
         <div style={{ maxWidth: 600, margin: "0 auto", padding: "24px 24px 0", display: "flex", flexDirection: "column", height: "calc(100vh - 66px)" }}>
-
           {k.bedrijfsnaam ? (
             <div style={{ background: C.tealLight, border: `1px solid ${C.tealBorder}`, borderRadius: 8, padding: "9px 16px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
               <div style={{ width: 7, height: 7, borderRadius: "50%", background: C.teal, flexShrink: 0 }} />
@@ -280,7 +276,6 @@ export default function App() {
 
           <div style={{ flex: 1, overflowY: "auto", paddingBottom: 12 }}>
             {loading && messages.length === 0 && <TypingBubble />}
-
             {messages.map((m, i) => (
               <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", marginBottom: 10, alignItems: "flex-end", gap: 8 }}>
                 {m.role === "assistant" && <AIAvatar />}
@@ -296,7 +291,6 @@ export default function App() {
                 </div>
               </div>
             ))}
-
             {loading && messages.length > 0 && <TypingBubble />}
             <div ref={endRef} />
           </div>
